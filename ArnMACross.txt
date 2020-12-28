@@ -1,0 +1,59 @@
+{
+Price on MA after bars confirmed 
+Observed indictor bars and stategy bars need to match to see correct orders otherwise they will mismatch. In this 3 MA and stratgy has 300 bars 
+Trailing stops hurts but help in max draw down reduction 
+
+}
+
+inputs: 
+	Price( Close ) , 
+	FastLength( 50 ),
+	SlowLength(200),
+	StartTrailingStopPct(20),
+	ConfirmBars( 1) ;
+	
+variables: 
+	LongCounter( 0 ), SellCounter(0),EnterCondition(false), ExitCondition(false), TrailingStopCondition(false),FastAverage(0), SlowAverage(0);
+
+FastAverage = XAverage( Price, FastLength );
+SlowAverage = XAverage( Price, SlowLength );
+
+EnterCondition = Price > FastAverage and FastAverage >  SlowAverage; 
+ExitCondition =  Price <  SlowAverage and  FastAverage < SlowAverage;
+
+TrailingStopCondition = StartTrailingStopPct > 0 and Price > FastAverage*(1+StartTrailingStopPct/100);
+
+if EnterCondition  then 
+	LongCounter = LongCounter + 1 
+Else 
+ 	LongCounter = 0;
+ 	
+if ExitCondition  then 
+	SellCounter = SellCounter + 1 
+else 
+	SellCounter = 0;
+
+
+{ CB > ConfirmBars check used to avoid spurious cross confirmation at 
+  CB = ConfirmBars }
+if CurrentBar > ConfirmBars and LongCounter >= ConfirmBars then 
+	Begin 
+	Buy ( !( "MALE1" ) ) next bar at O;
+	SellCounter = 0;
+	end;
+
+if ExitCondition then
+	Begin
+		Sell ( !( "MASL1" ) ) next bar at O;
+		LongCounter = 0;
+	end;
+
+if(TrailingStopCondition) then begin
+	Value1 = FastAverage*(1+StartTrailingStopPct/100);
+	Value2 = Value1-FastAverage;
+	Setstopshare;
+	SetDollarTrailing(Value2/3);
+	LongCounter = 0;
+	SellCounter = 0;
+end;
+
