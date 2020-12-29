@@ -1,0 +1,63 @@
+{
+Donchian CHL entry following HL from Jim book best performance for 10-20 period 
+
+}
+
+inputs: 
+	Price( Close ) , 
+	SwingLength( 10 ),
+	SwingStrength(3),
+	LongTermLength(200),
+	StartTrailingStopPct(20),
+	StopLossDollar(10),
+	ConfirmBars( 1) ;
+	
+variables: 
+	LongCounter( 0 ), SellCounter(0),EnterCondition(false), ExitCondition(false), TrailingStopCondition(false), LongTermAverage(0),PriceEntered(0),LowSwing(0),HighSwing(0),ATRValue(0);
+
+LongTermAverage = AverageFC( Price, LongTermLength );
+HighSwing = SwingLow(1,High,SwingStrength,SwingLength);
+LowSwing = SwingLow(1,Low,SwingStrength,SwingLength);
+ATRValue = AvgTrueRange( SwingLength ) ;
+
+EnterCondition = Price > LongTermAverage and LowSwing[2] < LowSwing[1] and Low > LowSwing[1]  ; 
+ExitCondition =  Price <  LongTermAverage OR  High > HighSwing[1]+ATRValue;
+
+TrailingStopCondition = barssinceentry >1 and StartTrailingStopPct > 0 and Price > PriceEntered*(1+StartTrailingStopPct/100);
+
+if EnterCondition  then 
+	LongCounter = LongCounter + 1 
+Else 
+ 	LongCounter = 0;
+ 	
+if ExitCondition  then 
+	SellCounter = SellCounter + 1 
+else 
+	SellCounter = 0;
+
+
+{ CB > ConfirmBars check used to avoid spurious cross confirmation at 
+  CB = ConfirmBars }
+if CurrentBar > ConfirmBars and LongCounter >= ConfirmBars then 
+	Begin 
+	Buy ( !( "HLE1" ) ) next bar at O;
+	SellCounter = 0;
+	Setstoploss(StopLossDollar);
+	PriceEntered = Open;
+	end;
+
+if ExitCondition and SellCounter >ConfirmBars then
+	Begin
+		Sell ( !( "HLSL1" ) ) next bar at O;
+		LongCounter = 0;
+	end;
+
+if( TrailingStopCondition=true) then begin
+	Value1 = Price*(1-StartTrailingStopPct/100);
+	Value2 = Price-Value1;
+	Setstopshare;
+	SetDollarTrailing(Value2);
+	LongCounter = 0;
+	SellCounter = 0;
+end;
+
