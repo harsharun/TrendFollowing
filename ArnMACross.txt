@@ -1,6 +1,7 @@
 {
 Price on MA after bars confirmed 
 Observed indictor bars and stategy bars need to match to see correct orders otherwise they will mismatch. In this 3 MA and stratgy has 300 bars 
+02/15/21 : Change structre so I can test with stop loss / trailing stop. 
 
 }
 
@@ -10,52 +11,105 @@ inputs:
 	SlowLength(200),
 	StartTrailingStopPct(20),
 	StopLossPct(10),
-	ConfirmBars( 1) ;
+	ConfirmBars( 1) ,
+	TimeStopBars(0);
 	
 variables: 
 	LongCounter( 0 ), SellCounter(0),EnterCondition(false), ExitCondition(false), TrailingStopCondition(false),FastAverage(0), SlowAverage(0),PriceEntered(0);
 
-FastAverage = Average( Price, FastLength );
-SlowAverage = Average( Price, SlowLength );
+Method void UpdateData()
+Begin
+	FastAverage = Average( Price, FastLength );
+	SlowAverage = Average( Price, SlowLength );
+	TrailingStopCondition = barssinceentry >1 and StartTrailingStopPct > 0 and Price > PriceEntered*(1+StartTrailingStopPct/100);
+end;
+Method bool HasMetEnterCriteria() 
+Begin		
+	EnterCondition = Price > FastAverage and Price >  SlowAverage; 
+	Return EnterCondition;
+end;
+Method bool HasMetExitCriteria()
+Begin
+		ExitCondition =  Price <  SlowAverage;
+		Return ExitCondition;
+end;
 
-EnterCondition = Price > FastAverage and FastAverage >  SlowAverage; 
-ExitCondition =  Price <  SlowAverage and  FastAverage < SlowAverage;
+Method void UpdateCounters() 
+Begin	
+	if EnterCondition  then 
+		LongCounter = LongCounter + 1;	
+			
+	if ExitCondition  then 
+		SellCounter = SellCounter + 1 ;
 
-TrailingStopCondition = barssinceentry >1 and StartTrailingStopPct > 0 and Price > PriceEntered*(1+StartTrailingStopPct/100);
+end;
+//In case of early entry or exit 
+Method bool HasCandleStickPatterns()
+Begin 
+	Return true;
+end;
 
-if EnterCondition  then 
-	LongCounter = LongCounter + 1 
-Else 
- 	LongCounter = 0;
- 	
-if ExitCondition  then 
-	SellCounter = SellCounter + 1 
-else 
-	SellCounter = 0;
-
-
-{ CB > ConfirmBars check used to avoid spurious cross confirmation at 
+Method void EnterPosition()
+Begin 
+	{ CB > ConfirmBars check used to avoid spurious cross confirmation at 
   CB = ConfirmBars }
-if CurrentBar > ConfirmBars and LongCounter >= ConfirmBars then 
-	Begin 
 	Buy ( !( "MALE1" ) ) next bar at O;
-	SellCounter = 0;
-	//Setstoploss(Open*StopLossPct/100);
-	PriceEntered = Open;
-	end;
+end;
 
-if ExitCondition then
-	Begin
+Method void ExitPosition()
+Begin 
 		Sell ( !( "MASL1" ) ) next bar at O;
-		LongCounter = 0;
-	end;
+end;
 
-if( TrailingStopCondition=true) then begin
-	Value1 = Price*(1-StartTrailingStopPct/100);
-	Value2 = Price-Value1;
-	Setstopshare;
-	SetDollarTrailing(Value2);
-	LongCounter = 0;
+
+Method void TrailingStop()
+Begin
+	if( TrailingStopCondition=true) then begin
+		Value1 = Price*(1-StartTrailingStopPct/100);
+		Value2 = Price-Value1;
+		Setstopshare;
+		SetDollarTrailing(Value2);
+		ResetAfterExit();
+	end;
+end;
+
+Method void TimeStop()
+Begin 
+	if(TimeStopBars > 0 and barssinceentry > TimeStopBars) then  
+		begin 
+			Sell ( !( "HLTS" ) ) next  bar at O;
+			ResetAfterExit();
+			return;
+		end;
+end;
+Method void SetAfterEntry() 
+Begin 
+	PriceEntered = Open;
 	SellCounter = 0;
 end;
 
+Method void ResetAfterExit()
+Begin 
+	PriceEntered=0;
+	LongCounter = 0;
+end;
+
+Method void Main()
+Begin 
+	UpdateData();	
+	EnterCondition = HasMetEnterCriteria();	
+	ExitCondition =   HasMetExitCriteria();
+	if(EnterCondition and LongCounter > ConfirmBars ) then 
+	Begin 
+		EnterPosition();
+	end;
+	TimeStop();
+	if(ExitCondition and SellCounter > ConfirmBars) then 
+	Begin 
+		ExitPosition();
+		ResetAfterExit();
+	end;
+	UpdateCounters();
+end;
+
+Main();
